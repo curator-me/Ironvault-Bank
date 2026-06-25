@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: ironvault-banking-system
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:mysql://localhost:3306/ironvault_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+    username: ${DATABASE_USERNAME:user_ironvault}
+    password: ${DATABASE_PASSWORD:password123}
+    driver-class-name: ${DATABASE_DRIVER:com.mysql.cj.jdbc.Driver}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: ${DATABASE_DIALECT:org.hibernate.dialect.MySQLDialect}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:placeholder_jwt_secret_key_must_be_at_least_256_bits_long_for_security_reasons_1234567890}
+    expiry-ms: ${JWT_EXPIRY_MS:1800000} # Default to 30 minutes (1,800,000 ms) for inactivity session timeout
