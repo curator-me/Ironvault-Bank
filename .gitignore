@@ -20,6 +20,7 @@ buildNumber.properties
 .settings/
 .springBeans
 .vscode/
+.puku
 
 # Log files
 *.log
