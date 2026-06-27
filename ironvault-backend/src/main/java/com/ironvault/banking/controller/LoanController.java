@@ -2,12 +2,19 @@ package com.ironvault.banking.controller;
 
 import com.ironvault.banking.dto.LoanRequest;
 import com.ironvault.banking.dto.LoanResponse;
+import com.ironvault.banking.dto.TransactionResponse;
 import com.ironvault.banking.model.Account;
+import com.ironvault.banking.model.AuditLog;
 import com.ironvault.banking.model.Loan;
 import com.ironvault.banking.model.LoanStatus;
+import com.ironvault.banking.model.Transaction;
+import com.ironvault.banking.model.TransactionStatus;
+import com.ironvault.banking.model.TransactionType;
 import com.ironvault.banking.model.User;
 import com.ironvault.banking.repository.AccountRepository;
+import com.ironvault.banking.repository.AuditLogRepository;
 import com.ironvault.banking.repository.LoanRepository;
+import com.ironvault.banking.repository.TransactionRepository;
 import com.ironvault.banking.repository.UserRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/customer/loans")
@@ -27,6 +35,8 @@ public class LoanController {
     private final LoanRepository loanRepository;
     private final UserRepository userRepository;
     private final AccountRepository accountRepository;
+    private final TransactionRepository transactionRepository;
+    private final AuditLogRepository auditLogRepository;
 
     @PostMapping
     @Transactional
@@ -70,7 +80,7 @@ public class LoanController {
     
     @PostMapping("/{loanId}/pay")
     @Transactional
-    public ResponseEntity<?> payLoan(@PathVariable Long loanId, Principal principal) {
+    public ResponseEntity<TransactionResponse> payLoan(@PathVariable Long loanId, Principal principal) {
         User user = userRepository.findByUsername(principal.getName())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -82,21 +92,48 @@ public class LoanController {
         }
 
         if (loan.getStatus() != LoanStatus.ACTIVE) {
-            return ResponseEntity.badRequest().body("Loan is not active");
+            return ResponseEntity.badRequest().body(null);
         }
-        
-        // This is a simplified payment process
+
         Account account = loan.getAccount();
         if (account.getBalance().compareTo(loan.getAmount()) < 0) {
-            return ResponseEntity.badRequest().body("Insufficient funds to pay loan");
+            return ResponseEntity.badRequest().body(null);
         }
-        
+
         account.setBalance(account.getBalance().subtract(loan.getAmount()));
         accountRepository.save(account);
-        
+
+        Transaction transaction = Transaction.builder()
+                .transactionId(generateTransactionId())
+                .type(TransactionType.WITHDRAWAL)
+                .amount(loan.getAmount())
+                .fromAccount(account)
+                .toAccount(null)
+                .status(TransactionStatus.COMPLETED)
+                .build();
+        transaction = transactionRepository.save(transaction);
+
         loan.setStatus(LoanStatus.CLOSED);
         loanRepository.save(loan);
-        
-        return ResponseEntity.ok().build();
+
+        AuditLog auditLog = AuditLog.builder()
+                .performedBy(user)
+                .action("LOAN_PAYMENT")
+                .details("Paid off loan " + loan.getId() + " (" + loan.getLoanType() + ") from account "
+                        + account.getAccountNumber() + " for $" + loan.getAmount().toPlainString()
+                        + " [txn=" + transaction.getTransactionId() + "]")
+                .build();
+        auditLogRepository.save(auditLog);
+
+        return ResponseEntity.ok(TransactionResponse.from(transaction));
+    }
+
+    private String generateTransactionId() {
+        String random = UUID.randomUUID()
+                .toString()
+                .replace("-", "")
+                .toUpperCase()
+                .substring(0, 12);
+        return "TXN-" + random;
     }
 }

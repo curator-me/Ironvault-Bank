@@ -5,12 +5,19 @@ import com.ironvault.banking.dto.OpenAccountRequest;
 import com.ironvault.banking.dto.UpdateAccountStatusRequest;
 import com.ironvault.banking.model.Account;
 import com.ironvault.banking.model.AccountStatus;
+import com.ironvault.banking.model.AuditLog;
+import com.ironvault.banking.model.Transaction;
 import com.ironvault.banking.model.User;
 import com.ironvault.banking.repository.AccountRepository;
+import com.ironvault.banking.repository.AuditLogRepository;
+import com.ironvault.banking.repository.TransactionRepository;
 import com.ironvault.banking.repository.UserRepository;
+import com.ironvault.banking.util.StatementPdfGenerator;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.math.BigDecimal;
 import java.security.Principal;
 import java.security.SecureRandom;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -37,6 +45,9 @@ public class AccountController {
 
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
+    private final TransactionRepository transactionRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final StatementPdfGenerator statementPdfGenerator;
     private final SecureRandom secureRandom = new SecureRandom();
 
     // Create Account
@@ -132,6 +143,42 @@ public class AccountController {
         account.setStatus(AccountStatus.CLOSED);
         accountRepository.save(account);
         return ResponseEntity.noContent().build();
+    }
+
+    // Download account statement (holder + account info + recent transaction history)
+    @GetMapping("/{id}/statement")
+    @Transactional
+    public ResponseEntity<byte[]> accountStatement(@PathVariable Long id, Principal principal) {
+        User user = userRepository.findByUsername(principal.getName())
+                .orElseThrow(() -> new IllegalArgumentException("User not found with username: " + principal.getName()));
+
+        Account account = accountRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Account not found with id: " + id));
+
+        if (!account.getUser().getId().equals(user.getId())) {
+            throw new IllegalArgumentException("You are not authorized to access this account");
+        }
+
+        LocalDateTime from = LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime to = LocalDateTime.now().plusYears(100);
+        List<Transaction> history = transactionRepository.findByAccountIdAndTimestampBetween(
+                account.getId(), from, to);
+
+        byte[] pdf = statementPdfGenerator.generateAccountStatement(account, history, user.getUsername());
+
+        AuditLog log = AuditLog.builder()
+                .performedBy(user)
+                .action("ACCOUNT_STATEMENT_GENERATED")
+                .details("Generated PDF statement for account " + account.getAccountNumber()
+                        + " (" + history.size() + " transactions)")
+                .build();
+        auditLogRepository.save(log);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"statement-" + account.getAccountNumber() + ".pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
     }
 
     // Private methods

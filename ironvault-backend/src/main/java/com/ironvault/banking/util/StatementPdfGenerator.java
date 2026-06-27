@@ -1,5 +1,6 @@
 package com.ironvault.banking.util;
 
+import com.ironvault.banking.model.Account;
 import com.ironvault.banking.model.Transaction;
 import com.lowagie.text.*;
 import com.lowagie.text.pdf.PdfPCell;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.awt.Color;
 
 @Component
@@ -34,6 +36,9 @@ public class StatementPdfGenerator {
     private static final Font FONT_VALUE_BOLD = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10f, TEXT_DARK);
     private static final Font FONT_AMOUNT     = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14f, TEXT_DARK);
     private static final Font FONT_FOOTER     = FontFactory.getFont(FontFactory.HELVETICA_OBLIQUE, 8f, TEXT_MUTED);
+    private static final Font FONT_TABLE_HEAD = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8f, TEXT_MUTED);
+    private static final Font FONT_TABLE_BODY = FontFactory.getFont(FontFactory.HELVETICA, 9f, TEXT_DARK);
+    private static final Font FONT_TABLE_NUM  = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9f, TEXT_DARK);
 
     public byte[] generate(Transaction transaction, String username) {
         try {
@@ -154,6 +159,122 @@ public class StatementPdfGenerator {
         }
     }
 
+    public byte[] generateAccountStatement(Account account, List<Transaction> transactions, String username) {
+        try {
+            Rectangle page = PageSize.A4;
+            Document document = new Document(page, 48, 48, 54, 48);
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            PdfWriter.getInstance(document, outputStream);
+            document.open();
+
+            // --- Header band ---
+            PdfPTable header = new PdfPTable(1);
+            header.setWidthPercentage(100);
+            PdfPCell headerCell = new PdfPCell();
+            headerCell.setBackgroundColor(ACCENT);
+            headerCell.setBorder(Rectangle.NO_BORDER);
+            headerCell.setPadding(18f);
+
+            Paragraph brand = new Paragraph("IronVault", FONT_BRAND);
+            brand.setSpacingAfter(2f);
+            Paragraph tagline = new Paragraph("Official Account Statement", FONT_TAGLINE);
+            headerCell.addElement(brand);
+            headerCell.addElement(tagline);
+            header.addCell(headerCell);
+            document.add(header);
+
+            // --- Meta row ---
+            document.add(space(14));
+            PdfPTable meta = new PdfPTable(2);
+            meta.setWidthPercentage(100);
+            meta.setWidths(new float[]{1f, 1f});
+            addMetaCell(meta, "CUSTOMER", safe(username));
+            addMetaCell(meta, "ISSUED ON", DATE_FMT.format(java.time.LocalDateTime.now()));
+            document.add(meta);
+            document.add(space(8));
+            document.add(divider());
+
+            // --- Account holder info ---
+            document.add(space(16));
+            Paragraph holderTitle = new Paragraph("ACCOUNT HOLDER", FONT_SECTION);
+            holderTitle.setSpacingAfter(6f);
+            document.add(holderTitle);
+
+            PdfPTable holder = twoColTable();
+            String holderName = account.getUser() != null ? account.getUser().getUsername() : "—";
+            String holderEmail = account.getUser() != null ? safe(account.getUser().getEmail()) : "—";
+            addRow(holder, "Username", holderName, true);
+            addRow(holder, "Email", holderEmail, false);
+            document.add(holder);
+
+            // --- Account info ---
+            document.add(space(18));
+            Paragraph accountTitle = new Paragraph("ACCOUNT INFORMATION", FONT_SECTION);
+            accountTitle.setSpacingAfter(6f);
+            document.add(accountTitle);
+
+            PdfPTable acct = twoColTable();
+            addRow(acct, "Account Number", account.getAccountNumber(), true);
+            addRow(acct, "Type", account.getType().toString(), false);
+            addRow(acct, "Status", account.getStatus().toString(), false);
+            addRow(acct, "Current Balance", "$" + account.getBalance().toPlainString(), false);
+            addRow(acct, "Opened On", DATE_FMT.format(account.getCreatedDate()), false);
+            document.add(acct);
+
+            // --- Transaction history ---
+            document.add(space(18));
+            Paragraph historyTitle = new Paragraph("TRANSACTION HISTORY", FONT_SECTION);
+            historyTitle.setSpacingAfter(6f);
+            document.add(historyTitle);
+
+            PdfPTable history = new PdfPTable(4);
+            history.setWidthPercentage(100);
+            history.setWidths(new float[]{1.5f, 0.9f, 1.0f, 1.2f});
+            history.setSpacingBefore(2f);
+
+            addTableHeader(history, "TRANSACTION ID");
+            addTableHeader(history, "TYPE");
+            addTableHeader(history, "AMOUNT");
+            addTableHeader(history, "DATE");
+
+            if (transactions == null || transactions.isEmpty()) {
+                PdfPCell empty = new PdfPCell(new Phrase("No transactions on this account.", FONT_TABLE_BODY));
+                empty.setColspan(4);
+                empty.setBorder(Rectangle.NO_BORDER);
+                empty.setPadding(10f);
+                empty.setHorizontalAlignment(Element.ALIGN_CENTER);
+                history.addCell(empty);
+            } else {
+                boolean banded = false;
+                for (Transaction t : transactions) {
+                    String sign = isCredit(t) ? "+" : "-";
+                    addTableCell(history, t.getTransactionId(), banded, false);
+                    addTableCell(history, t.getType().toString(), banded, false);
+                    addTableCell(history, sign + "$" + t.getAmount().toPlainString(), banded, true);
+                    addTableCell(history, DATE_FMT.format(t.getTimestamp()), banded, false);
+                    banded = !banded;
+                }
+            }
+            document.add(history);
+
+            // --- Footer ---
+            document.add(space(28));
+            Paragraph footer = new Paragraph(
+                    "This is a system-generated statement from IronVault Banking. "
+                            + "Please retain for your records.",
+                    FONT_FOOTER
+            );
+            footer.setAlignment(Element.ALIGN_CENTER);
+            document.add(footer);
+
+            document.close();
+            return outputStream.toByteArray();
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to generate account PDF statement: " + e.getMessage());
+        }
+    }
+
     // ---------- helpers ----------
 
     private static boolean isCredit(Transaction t) {
@@ -224,6 +345,27 @@ public class StatementPdfGenerator {
 
     private static String safe(String s) {
         return s == null || s.isBlank() ? "—" : s;
+    }
+
+    private static void addTableHeader(PdfPTable table, String text) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, FONT_TABLE_HEAD));
+        cell.setBackgroundColor(BAND);
+        cell.setBorderColor(BORDER);
+        cell.setBorderWidth(0.8f);
+        cell.setPadding(6f);
+        table.addCell(cell);
+    }
+
+    private static void addTableCell(PdfPTable table, String text, boolean banded, boolean rightAlign) {
+        PdfPCell cell = new PdfPCell(new Phrase(text == null ? "—" : text, rightAlign ? FONT_TABLE_NUM : FONT_TABLE_BODY));
+        cell.setBorderColor(BORDER);
+        cell.setBorderWidth(0.5f);
+        cell.setPadding(6f);
+        cell.setBackgroundColor(banded ? BAND : Color.WHITE);
+        if (rightAlign) {
+            cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        }
+        table.addCell(cell);
     }
 }
 

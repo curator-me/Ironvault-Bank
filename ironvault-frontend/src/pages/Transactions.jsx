@@ -11,6 +11,7 @@ import { useAuth } from "../hooks/useAuth";
 import client from "../api/client";
 import TransactionForm from "../components/TransactionForm";
 import TransactionTable from "../components/TransactionTable";
+import { downloadFile } from "../utils/downloadFile";
 
 export const Transactions = () => {
   const { user } = useAuth();
@@ -67,16 +68,7 @@ export const Transactions = () => {
 
   const handleDownloadStatement = async (trx_id) => {
     try {
-      const res = await client.get(`/transactions/${trx_id}/statement`, {
-        responseType: 'blob',
-      });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `statement-${trx_id}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode.removeChild(link);
+      await downloadFile(`/transactions/${trx_id}/statement`, `statement-${trx_id}.pdf`);
     } catch (err) {
       setError('Failed to download statement');
     }
@@ -277,7 +269,7 @@ export const Transactions = () => {
         <TransactionTable
           transactions={transactions}
           showId={false}
-          showTxId={true}
+          compact
           onDownload={(txn) => handleDownloadStatement(txn.id)}
           emptyText="Your transactions will appear here"
           pagination={{

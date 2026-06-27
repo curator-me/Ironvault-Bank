@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,7 +10,8 @@ import {
   Car,
   Home,
   GraduationCap,
-  Wallet
+  Wallet,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import client from '../api/client';
@@ -40,6 +42,7 @@ export const Loans = () => {
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [payConfirm, setPayConfirm] = useState(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -102,13 +105,23 @@ export const Loans = () => {
     }
   };
 
-  const handlePayLoan = async (loanId) => {
+  const handleAskPayLoan = (loan) => {
+    setPayConfirm(loan);
+  };
+
+  const handleCancelPayLoan = () => {
+    setPayConfirm(null);
+  };
+
+  const handleConfirmPayLoan = async () => {
+    if (!payConfirm) return;
     setIsSubmitting(true);
     try {
-      await client.post(`/customer/loans/${loanId}/pay`);
-      setLoans(loans.map((l) => (l.id === loanId ? { ...l, status: 'CLOSED' } : l)));
+      await client.post(`/customer/loans/${payConfirm.id}/pay`);
+      setLoans(loans.map((l) => (l.id === payConfirm.id ? { ...l, status: 'CLOSED' } : l)));
       setSuccessMessage('Loan paid off successfully');
       setTimeout(() => setSuccessMessage(''), 3000);
+      setPayConfirm(null);
     } catch (err) {
       setError(err.response?.data?.message || err.response?.data || 'Failed to pay loan');
       setTimeout(() => setError(''), 3000);
@@ -260,7 +273,7 @@ export const Loans = () => {
                       <motion.button
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
-                        onClick={() => handlePayLoan(loan.id)}
+                        onClick={() => handleAskPayLoan(loan)}
                         disabled={isSubmitting}
                         className="flex-1 flex items-center justify-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-600 py-2 rounded-lg font-medium transition-colors text-sm disabled:opacity-50"
                       >
@@ -390,6 +403,107 @@ export const Loans = () => {
               </motion.div>
             </motion.div>
           )}
+        </AnimatePresence>
+
+        {/* Pay Loan Confirmation Modal */}
+        <AnimatePresence>
+          {payConfirm && (() => {
+            const linkedAccount = accounts.find((a) => a.id === payConfirm.accountId)
+              || payConfirm.account
+              || null;
+            const currentBalance = linkedAccount ? Number(linkedAccount.balance) : 0;
+            const payAmount = Number(payConfirm.amount);
+            const resultingBalance = currentBalance - payAmount;
+            const insufficientFunds = linkedAccount && resultingBalance < 0;
+
+            return (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+                onClick={handleCancelPayLoan}
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  className="bg-white rounded-lg p-8 max-w-md w-full"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h2 className="text-2xl font-bold text-navy-900">Confirm Loan Payment</h2>
+                      <p className="text-sm text-navy-600 mt-1">
+                        Please review the details before proceeding.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleCancelPayLoan}
+                      className="text-navy-400 hover:text-navy-600 transition-colors"
+                      aria-label="Close"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="bg-navy-50 border border-navy-100 rounded-lg p-4 mb-4 space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-navy-600">Loan ID</span>
+                      <span className="font-medium text-navy-900">#{payConfirm.id}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-navy-600">Loan Type</span>
+                      <span className="font-medium text-navy-900 uppercase">{payConfirm.loanType}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-navy-600">Source Account</span>
+                      <span className="font-mono font-medium text-navy-900">
+                        {linkedAccount?.accountNumber || '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-navy-600">Current Balance</span>
+                      <span className="font-medium text-navy-900">{formatCurrency(currentBalance)}</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-rose-50 border border-rose-100 rounded-lg p-4 mb-6">
+                    <p className="text-xs uppercase tracking-wide text-rose-600 mb-1">Amount to deduct</p>
+                    <p className="text-3xl font-bold text-rose-700">−{formatCurrency(payAmount)}</p>
+                    {linkedAccount && (
+                      <p className="text-xs text-navy-600 mt-2">
+                        Balance after payment: <span className="font-semibold">{formatCurrency(resultingBalance)}</span>
+                      </p>
+                    )}
+                    {insufficientFunds && (
+                      <p className="text-xs text-rose-700 mt-2 font-medium">
+                        Insufficient funds in the source account.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={handleCancelPayLoan}
+                      className="flex-1 bg-navy-100 hover:bg-navy-200 text-navy-900 py-2 rounded-lg font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmPayLoan}
+                      disabled={isSubmitting || insufficientFunds}
+                      className="flex-1 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white py-2 rounded-lg font-medium transition-colors"
+                    >
+                      {isSubmitting ? 'Processing...' : 'Confirm Payment'}
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            );
+          })()}
         </AnimatePresence>
       </div>
     </div>

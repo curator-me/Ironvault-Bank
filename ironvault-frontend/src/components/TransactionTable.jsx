@@ -29,6 +29,8 @@ const STATUS_BADGE = {
  *  - onDownload?: (txn) => void  -> if provided, an extra "Statement" column is rendered
  *  - showId?: boolean (default true) -> show leading ID column (admin view)
  *  - showTxId?: boolean (default true) -> show the public transactionId column
+ *  - showEndpoints?: boolean (default true) -> show From/To Account columns
+ *  - compact?: boolean (default false) -> shorthand for showTxId=false, showEndpoints=false
  *  - emptyText?: string
  *  - pagination?: { page, totalPages, onPrev, onNext } (optional)
  *  - toFallback?: string (default '—') for missing To Account
@@ -38,14 +40,21 @@ export const TransactionTable = ({
   onDownload,
   showId = true,
   showTxId = true,
+  showEndpoints = true,
+  compact = false,
   emptyText = 'No transactions found',
   pagination,
   toFallback = '—',
 }) => {
+  const effectiveShowTxId = compact ? false : showTxId;
+  const effectiveShowEndpoints = compact ? false : showEndpoints;
+  const dateHeader = compact ? 'Date' : 'Timestamp';
+
   const columnCount =
     (showId ? 1 : 0) +
-    (showTxId ? 1 : 0) +
-    6 +
+    (effectiveShowTxId ? 1 : 0) +
+    (effectiveShowEndpoints ? 2 : 0) +
+    4 +
     (onDownload ? 1 : 0);
 
   return (
@@ -63,7 +72,7 @@ export const TransactionTable = ({
                   ID
                 </th>
               )}
-              {showTxId && (
+              {effectiveShowTxId && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-navy-700 uppercase">
                   Transaction ID
                 </th>
@@ -74,14 +83,18 @@ export const TransactionTable = ({
               <th className="px-6 py-3 text-left text-xs font-medium text-navy-700 uppercase">
                 Amount
               </th>
+              {effectiveShowEndpoints && (
+                <>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-navy-700 uppercase">
+                    From Account
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-navy-700 uppercase">
+                    To Account
+                  </th>
+                </>
+              )}
               <th className="px-6 py-3 text-left text-xs font-medium text-navy-700 uppercase">
-                From Account
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-navy-700 uppercase">
-                To Account
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-navy-700 uppercase">
-                Timestamp
+                {dateHeader}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-navy-700 uppercase">
                 Status
@@ -122,7 +135,7 @@ export const TransactionTable = ({
                         {txn.id}
                       </td>
                     )}
-                    {showTxId && (
+                    {effectiveShowTxId && (
                       <td className="px-6 py-4 text-sm font-mono text-navy-700">
                         {txn.transactionId}
                       </td>
@@ -139,14 +152,18 @@ export const TransactionTable = ({
                       {Meta.sign}
                       {formatCurrency(txn.amount)}
                     </td>
-                    <td className="px-6 py-4 text-sm text-navy-600 font-mono">
-                      {txn.fromAccountNumber || '—'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-navy-600 font-mono">
-                      {txn.type === 'WITHDRAWAL'
-                        ? 'N/A'
-                        : txn.toAccountNumber || toFallback}
-                    </td>
+                    {effectiveShowEndpoints && (
+                      <>
+                        <td className="px-6 py-4 text-sm text-navy-600 font-mono">
+                          {txn.fromAccountNumber || '—'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-navy-600 font-mono">
+                          {txn.type === 'WITHDRAWAL'
+                            ? 'N/A'
+                            : txn.toAccountNumber || toFallback}
+                        </td>
+                      </>
+                    )}
                     <td className="px-6 py-4 text-sm text-navy-600">
                       {formatDateTime(txn.timestamp)}
                     </td>

@@ -11,6 +11,7 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import client from '../api/client';
 import { formatCurrency, formatDateTime } from '../utils/formatters';
+import { downloadFile } from '../utils/downloadFile';
 
 const ACCOUNT_ICONS = {
   CHECKING: Wallet,
@@ -97,18 +98,12 @@ export const Accounts = () => {
     }
   };
 
-  const handleDownloadStatement = async (accountId) => {
+  const handleDownloadStatement = async (account) => {
     try {
-      const res = await client.get(`/transactions/${accountId}/statement`, {
-        responseType: 'blob',
-      });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `statement-${accountId}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode.removeChild(link);
+      await downloadFile(
+        `/accounts/${account.id}/statement`,
+        `statement-${account.accountNumber}.pdf`
+      );
     } catch (err) {
       setError('Failed to download statement');
     }
@@ -245,7 +240,7 @@ export const Accounts = () => {
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => handleDownloadStatement(account.id)}
+                      onClick={() => handleDownloadStatement(account)}
                       className="flex-1 flex items-center justify-center gap-2 bg-navy-50 hover:bg-navy-100 text-navy-700 py-2 rounded-lg font-medium transition-colors text-sm"
                     >
                       <Download className="w-4 h-4" />
