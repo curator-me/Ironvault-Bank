@@ -24,7 +24,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             @Param("endDate") LocalDateTime endDate
     );
 
-    @Query("SELECT t FROM Transaction t WHERE (t.fromAccount.user.id = :userId OR t.toAccount.user.id = :userId) " +
+    @Query("SELECT t FROM Transaction t " +
+            "LEFT JOIN t.fromAccount f " +
+            "LEFT JOIN t.toAccount toAcct " +
+            "WHERE (f.user.id = :userId OR toAcct.user.id = :userId) " +
             "AND t.timestamp BETWEEN :startDate AND :endDate " +
             "AND t.amount BETWEEN :minAmount AND :maxAmount")
     Page<Transaction> findUserTransactions(
